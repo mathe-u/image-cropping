@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Cortador de Imagem</title>
+    <style>
+        #container {
+            position: relative;
+            display: inline-block;
+        }
+
+        #selection-box {
+            position: absolute;
+            border: 2px dashed #000;
+            background: rgba(255, 255, 255, 0.3);
+            display: none;
+        }
+
+        #crop-btn {
+            margin-top: 10px;
+            padding: 10px 20px;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <input type="file" id="image-input" accept="image/*">
+    <div id="container">
+        <img id="preview" src="" style="display: none;">
+        <div id="selection-box"></div>
+    </div>
+    <br>
+    <button id="crop-btn">Cortar Imagem</button>
+
+    <script>
+        let startX, startY, endX, endY;
+        let isDrawing = false;
+        const imgInput = document.getElementById('image-input');
+        const preview = document.getElementById('preview');
+        const container = document.getElementById('container');
+        const selectionBox = document.getElementById('selection-box');
+        const cropBtn = document.getElementById('crop-btn');
+
+        imgInput.addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function (event) {
+                preview.src = event.target.result;
+                preview.style.display = 'block';
+                cropBtn.style.display = 'block';
+            };
+
+            reader.readAsDataURL(file);
+        });
+
+        preview.addEventListener('mousedown', function (e) {
+            isDrawing = true;
+            startX = e.clientX - preview.getBoundingClientRect().left;
+            startY = e.clientY - preview.getBoundingClientRect().top;
+            selectionBox.style.left = startX + 'px';
+            selectionBox.style.top = startY + 'px';
+            selectionBox.style.display = 'block';
+        });
+
+        preview.addEventListener('mousemove', function (e) {
+            if (!isDrawing) return;
+
+            endX = e.clientX - preview.getBoundingClientRect().left;
+            endY = e.clientY - preview.getBoundingClientRect().top;
+
+            const width = endX - startX;
+            const height = endY - startY;
+
+            selectionBox.style.width = Math.abs(width) + 'px';
+            selectionBox.style.height = Math.abs(height) + 'px';
+
+            if (width < 0) {
+                selectionBox.style.left = endX + 'px';
+            }
+            if (height < 0) {
+                selectionBox.style.top = endY + 'px';
+            }
+        });
+
+        document.addEventListener('mouseup', function () {
+            isDrawing = false;
+        });
+
+        cropBtn.addEventListener('click', async function () {
+            const formData = new FormData();
+            formData.append('image', imgInput.files[0]);
+            formData.append('x', parseInt(selectionBox.style.left));
+            formData.append('y', parseInt(selectionBox.style.top));
+            formData.append('width', parseInt(selectionBox.style.width));
+            formData.append('height', parseInt(selectionBox.style.height));
+
+            const response = await fetch('/crop', {
+                method: 'POST',
+                body: formData
+            });
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'imagem_cortada.png';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        });
+    </script>
+</body>
+
+</html>
