@@ -9,7 +9,7 @@ app = Flask(__name__)
 def index():
     return render_template('index.html')
 
-@app.route('/crop', methods=['POST'])
+@app.route('/api/crop', methods=['POST'])
 def crop():
     # Recebe dados da área de corte e imagem
     x = int(request.form['x'])

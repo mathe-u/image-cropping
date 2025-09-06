@@ -4,111 +4,512 @@
 <head>
     <title>Cortador de Imagem</title>
     <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+
         #container {
             position: relative;
             display: inline-block;
+            cursor: crosshair;
+            user-select: none;
+        }
+
+        #preview {
+            max-width: 800px;
+            max-height: 600px;
+            display: block;
         }
 
         #selection-box {
             position: absolute;
-            border: 2px dashed #000;
-            background: rgba(255, 255, 255, 0.3);
+            border: 2px solid #007bff;
+            background: rgba(0, 123, 255, 0.1);
             display: none;
+            box-sizing: border-box;
+        }
+
+        #selection-box:hover {
+            cursor: move;
+        }
+
+        .resize-handle {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #007bff;
+            border: 1px solid #fff;
+            box-sizing: border-box;
+        }
+
+        .resize-handle.nw {
+            top: -4px;
+            left: -4px;
+            cursor: nw-resize;
+        }
+
+        .resize-handle.ne {
+            top: -4px;
+            right: -4px;
+            cursor: ne-resize;
+        }
+
+        .resize-handle.sw {
+            bottom: -4px;
+            left: -4px;
+            cursor: sw-resize;
+        }
+
+        .resize-handle.se {
+            bottom: -4px;
+            right: -4px;
+            cursor: se-resize;
+        }
+
+        .resize-handle.n {
+            top: -4px;
+            left: 50%;
+            transform: translateX(-50%);
+            cursor: n-resize;
+        }
+
+        .resize-handle.s {
+            bottom: -4px;
+            left: 50%;
+            transform: translateX(-50%);
+            cursor: s-resize;
+        }
+
+        .resize-handle.w {
+            top: 50%;
+            left: -4px;
+            transform: translateY(-50%);
+            cursor: w-resize;
+        }
+
+        .resize-handle.e {
+            top: 50%;
+            right: -4px;
+            transform: translateY(-50%);
+            cursor: e-resize;
+        }
+
+        .selection-info {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 2px 6px;
+            font-size: 11px;
+            border-radius: 3px;
+            top: -25px;
+            left: 0;
+            white-space: nowrap;
         }
 
         #crop-btn {
-            margin-top: 10px;
+            margin-top: 15px;
             padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
             display: none;
+            font-size: 16px;
+        }
+
+        #crop-btn:hover {
+            background: #0056b3;
+        }
+
+        #crop-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .file-input-wrapper {
+            margin-bottom: 20px;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            padding: 10px;
+            border: 2px dashed #ccc;
+            border-radius: 4px;
+            width: 100%;
+            max-width: 400px;
         }
     </style>
 </head>
 
 <body>
-    <input type="file" id="image-input" accept="image/*">
+    <div class="file-input-wrapper">
+        <input type="file" id="image-input" accept="image/*">
+    </div>
+
     <div id="container">
         <img id="preview" src="" style="display: none;">
-        <div id="selection-box"></div>
+        <div id="selection-box">
+            <div class="resize-handle nw"></div>
+            <div class="resize-handle ne"></div>
+            <div class="resize-handle sw"></div>
+            <div class="resize-handle se"></div>
+            <div class="resize-handle n"></div>
+            <div class="resize-handle s"></div>
+            <div class="resize-handle w"></div>
+            <div class="resize-handle e"></div>
+            <div class="selection-info"></div>
+        </div>
     </div>
+
     <br>
     <button id="crop-btn">Cortar Imagem</button>
 
     <script>
-        let startX, startY, endX, endY;
-        let isDrawing = false;
-        const imgInput = document.getElementById('image-input');
-        const preview = document.getElementById('preview');
-        const container = document.getElementById('container');
-        const selectionBox = document.getElementById('selection-box');
-        const cropBtn = document.getElementById('crop-btn');
+        class ImageCropper {
+            constructor() {
+                this.startX = 0;
+                this.startY = 0;
+                this.isDrawing = false;
+                this.isResizing = false;
+                this.isDragging = false;
+                this.currentHandle = null;
+                this.dragOffsetX = 0;
+                this.dragOffsetY = 0;
+                this.selectionData = { x: 0, y: 0, width: 0, height: 0 };
 
-        imgInput.addEventListener('change', function (e) {
-            const file = e.target.files[0];
-            const reader = new FileReader();
+                this.imgInput = document.getElementById('image-input');
+                this.preview = document.getElementById('preview');
+                this.container = document.getElementById('container');
+                this.selectionBox = document.getElementById('selection-box');
+                this.cropBtn = document.getElementById('crop-btn');
+                this.selectionInfo = document.querySelector('.selection-info');
 
-            reader.onload = function (event) {
-                preview.src = event.target.result;
-                preview.style.display = 'block';
-                cropBtn.style.display = 'block';
-            };
-
-            reader.readAsDataURL(file);
-        });
-
-        preview.addEventListener('mousedown', function (e) {
-            isDrawing = true;
-            startX = e.clientX - preview.getBoundingClientRect().left;
-            startY = e.clientY - preview.getBoundingClientRect().top;
-            selectionBox.style.left = startX + 'px';
-            selectionBox.style.top = startY + 'px';
-            selectionBox.style.display = 'block';
-        });
-
-        preview.addEventListener('mousemove', function (e) {
-            if (!isDrawing) return;
-
-            endX = e.clientX - preview.getBoundingClientRect().left;
-            endY = e.clientY - preview.getBoundingClientRect().top;
-
-            const width = endX - startX;
-            const height = endY - startY;
-
-            selectionBox.style.width = Math.abs(width) + 'px';
-            selectionBox.style.height = Math.abs(height) + 'px';
-
-            if (width < 0) {
-                selectionBox.style.left = endX + 'px';
+                this.initEventListeners();
             }
-            if (height < 0) {
-                selectionBox.style.top = endY + 'px';
+
+            initEventListeners() {
+                this.imgInput.addEventListener('change', (e) => this.handleImageLoad(e));
+                this.preview.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+                this.selectionBox.addEventListener('mousedown', (e) => this.handleSelectionMouseDown(e));
+                document.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+                document.addEventListener('mouseup', () => this.handleMouseUp());
+                this.cropBtn.addEventListener('click', () => this.cropImage());
+
+                // Prevent default drag behavior on image
+                this.preview.addEventListener('dragstart', (e) => e.preventDefault());
+
+                // Add resize handle listeners
+                const handles = this.selectionBox.querySelectorAll('.resize-handle');
+                handles.forEach(handle => {
+                    handle.addEventListener('mousedown', (e) => this.handleResizeStart(e));
+                });
             }
-        });
 
-        document.addEventListener('mouseup', function () {
-            isDrawing = false;
-        });
+            handleImageLoad(e) {
+                const file = e.target.files[0];
+                if (!file) return;
 
-        cropBtn.addEventListener('click', async function () {
-            const formData = new FormData();
-            formData.append('image', imgInput.files[0]);
-            formData.append('x', parseInt(selectionBox.style.left));
-            formData.append('y', parseInt(selectionBox.style.top));
-            formData.append('width', parseInt(selectionBox.style.width));
-            formData.append('height', parseInt(selectionBox.style.height));
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    this.preview.src = event.target.result;
+                    this.preview.style.display = 'block';
+                    this.cropBtn.style.display = 'inline-block';
+                    this.hideSelection();
+                };
+                reader.readAsDataURL(file);
+            }
 
-            const response = await fetch('/crop', {
-                method: 'POST',
-                body: formData
-            });
+            handleMouseDown(e) {
+                if (this.isResizing || this.isDragging) return;
 
-            const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'imagem_cortada.png';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+                e.preventDefault();
+                const rect = this.preview.getBoundingClientRect();
+                this.startX = e.clientX - rect.left;
+                this.startY = e.clientY - rect.top;
+
+                // Check if clicking inside existing selection
+                if (this.isInsideSelection(this.startX, this.startY)) {
+                    return; // Don't start new selection if clicking inside existing one
+                }
+
+                this.isDrawing = true;
+                this.container.style.cursor = 'crosshair';
+
+                this.selectionBox.style.left = this.startX + 'px';
+                this.selectionBox.style.top = this.startY + 'px';
+                this.selectionBox.style.width = '0px';
+                this.selectionBox.style.height = '0px';
+                this.selectionBox.style.display = 'block';
+            }
+
+            handleSelectionMouseDown(e) {
+                // Check if clicking on a resize handle
+                if (e.target.classList.contains('resize-handle')) {
+                    return; // Let the resize handler take care of it
+                }
+
+                e.stopPropagation();
+                e.preventDefault();
+
+                // Start dragging the selection box
+                this.isDragging = true;
+                this.container.style.cursor = 'move';
+
+                const rect = this.preview.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                const boxLeft = parseInt(this.selectionBox.style.left);
+                const boxTop = parseInt(this.selectionBox.style.top);
+
+                // Calculate offset between mouse position and box top-left corner
+                this.dragOffsetX = mouseX - boxLeft;
+                this.dragOffsetY = mouseY - boxTop;
+            }
+
+            handleMouseMove(e) {
+                if (!this.isDrawing && !this.isResizing && !this.isDragging) return;
+
+                e.preventDefault();
+                const rect = this.preview.getBoundingClientRect();
+                const currentX = e.clientX - rect.left;
+                const currentY = e.clientY - rect.top;
+
+                if (this.isDrawing) {
+                    this.updateSelection(this.startX, this.startY, currentX, currentY);
+                } else if (this.isResizing) {
+                    this.handleResize(currentX, currentY);
+                } else if (this.isDragging) {
+                    this.handleDrag(currentX, currentY);
+                }
+            }
+
+            handleMouseUp() {
+                if (this.isDrawing) {
+                    this.isDrawing = false;
+                    this.container.style.cursor = 'default';
+
+                    // Remove selection if it's too small
+                    if (parseInt(this.selectionBox.style.width) < 5 ||
+                        parseInt(this.selectionBox.style.height) < 5) {
+                        this.hideSelection();
+                    } else {
+                        this.updateSelectionData();
+                    }
+                }
+
+                if (this.isResizing) {
+                    this.isResizing = false;
+                    this.currentHandle = null;
+                    this.container.style.cursor = 'default';
+                    this.updateSelectionData();
+                }
+
+                if (this.isDragging) {
+                    this.isDragging = false;
+                    this.container.style.cursor = 'default';
+                    this.updateSelectionData();
+                }
+            }
+
+            handleDrag(currentX, currentY) {
+                const imgRect = this.preview.getBoundingClientRect();
+                const boxWidth = parseInt(this.selectionBox.style.width);
+                const boxHeight = parseInt(this.selectionBox.style.height);
+
+                // Calculate new position
+                let newLeft = currentX - this.dragOffsetX;
+                let newTop = currentY - this.dragOffsetY;
+
+                // Constrain to image boundaries
+                newLeft = Math.max(0, Math.min(newLeft, imgRect.width - boxWidth));
+                newTop = Math.max(0, Math.min(newTop, imgRect.height - boxHeight));
+
+                this.selectionBox.style.left = newLeft + 'px';
+                this.selectionBox.style.top = newTop + 'px';
+
+                this.updateSelectionInfo(newLeft, newTop, boxWidth, boxHeight);
+            }
+
+            handleResizeStart(e) {
+                e.stopPropagation();
+                e.preventDefault();
+
+                this.isResizing = true;
+                this.currentHandle = e.target.classList[1]; // Get direction class
+
+                const rect = this.preview.getBoundingClientRect();
+                this.startX = e.clientX - rect.left;
+                this.startY = e.clientY - rect.top;
+            }
+
+            handleResize(currentX, currentY) {
+                const box = this.selectionBox;
+                let left = parseInt(box.style.left);
+                let top = parseInt(box.style.top);
+                let width = parseInt(box.style.width);
+                let height = parseInt(box.style.height);
+
+                const deltaX = currentX - this.startX;
+                const deltaY = currentY - this.startY;
+
+                switch (this.currentHandle) {
+                    case 'nw':
+                        left += deltaX;
+                        top += deltaY;
+                        width -= deltaX;
+                        height -= deltaY;
+                        break;
+                    case 'ne':
+                        top += deltaY;
+                        width += deltaX;
+                        height -= deltaY;
+                        break;
+                    case 'sw':
+                        left += deltaX;
+                        width -= deltaX;
+                        height += deltaY;
+                        break;
+                    case 'se':
+                        width += deltaX;
+                        height += deltaY;
+                        break;
+                    case 'n':
+                        top += deltaY;
+                        height -= deltaY;
+                        break;
+                    case 's':
+                        height += deltaY;
+                        break;
+                    case 'w':
+                        left += deltaX;
+                        width -= deltaX;
+                        break;
+                    case 'e':
+                        width += deltaX;
+                        break;
+                }
+
+                // Ensure minimum size and boundaries
+                if (width < 10) width = 10;
+                if (height < 10) height = 10;
+                if (left < 0) left = 0;
+                if (top < 0) top = 0;
+
+                const imgRect = this.preview.getBoundingClientRect();
+                const maxWidth = imgRect.width - left;
+                const maxHeight = imgRect.height - top;
+
+                if (width > maxWidth) width = maxWidth;
+                if (height > maxHeight) height = maxHeight;
+
+                box.style.left = left + 'px';
+                box.style.top = top + 'px';
+                box.style.width = width + 'px';
+                box.style.height = height + 'px';
+
+                this.startX = currentX;
+                this.startY = currentY;
+
+                this.updateSelectionInfo(left, top, width, height);
+            }
+
+            updateSelection(startX, startY, endX, endY) {
+                const left = Math.min(startX, endX);
+                const top = Math.min(startY, endY);
+                const width = Math.abs(endX - startX);
+                const height = Math.abs(endY - startY);
+
+                this.selectionBox.style.left = left + 'px';
+                this.selectionBox.style.top = top + 'px';
+                this.selectionBox.style.width = width + 'px';
+                this.selectionBox.style.height = height + 'px';
+
+                this.updateSelectionInfo(left, top, width, height);
+            }
+
+            updateSelectionInfo(left, top, width, height) {
+                this.selectionInfo.textContent = `${Math.round(width)} × ${Math.round(height)}`;
+            }
+
+            updateSelectionData() {
+                const rect = this.preview.getBoundingClientRect();
+                const imgNaturalWidth = this.preview.naturalWidth;
+                const imgNaturalHeight = this.preview.naturalHeight;
+                const scaleX = imgNaturalWidth / rect.width;
+                const scaleY = imgNaturalHeight / rect.height;
+
+                this.selectionData = {
+                    x: parseInt(this.selectionBox.style.left) * scaleX,
+                    y: parseInt(this.selectionBox.style.top) * scaleY,
+                    width: parseInt(this.selectionBox.style.width) * scaleX,
+                    height: parseInt(this.selectionBox.style.height) * scaleY
+                };
+            }
+
+            isInsideSelection(x, y) {
+                if (this.selectionBox.style.display === 'none') return false;
+
+                const left = parseInt(this.selectionBox.style.left);
+                const top = parseInt(this.selectionBox.style.top);
+                const width = parseInt(this.selectionBox.style.width);
+                const height = parseInt(this.selectionBox.style.height);
+
+                return x >= left && x <= left + width && y >= top && y <= top + height;
+            }
+
+            hideSelection() {
+                this.selectionBox.style.display = 'none';
+            }
+
+            async cropImage() {
+                if (!this.imgInput.files[0] || this.selectionBox.style.display === 'none') {
+                    alert('Por favor, selecione uma área para cortar.');
+                    return;
+                }
+
+                this.cropBtn.disabled = true;
+                this.cropBtn.textContent = 'Cortando...';
+
+                try {
+                    const formData = new FormData();
+                    formData.append('image', this.imgInput.files[0]);
+                    formData.append('x', Math.round(this.selectionData.x));
+                    formData.append('y', Math.round(this.selectionData.y));
+                    formData.append('width', Math.round(this.selectionData.width));
+                    formData.append('height', Math.round(this.selectionData.height));
+
+                    const response = await fetch('/api/crop', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('Erro ao cortar a imagem');
+                    }
+
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'cropped_image.png';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+
+                } catch (error) {
+                    alert('Erro ao cortar a imagem: ' + error.message);
+                } finally {
+                    this.cropBtn.disabled = false;
+                    this.cropBtn.textContent = 'Cortar Imagem';
+                }
+            }
+        }
+
+        // Initialize the cropper when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new ImageCropper();
         });
     </script>
 </body>
